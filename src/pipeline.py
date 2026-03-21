@@ -1,6 +1,8 @@
 import os
 import time
 import sys
+import subprocess
+import requests
 
 # Upewniamy się, że python znajdzie moduły
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,6 +20,48 @@ from src.modules.texture_variants import TextureVariantGenerator
 from src.modules.scene_generator import SceneGeneratorLLM
 from src.modules.imagination import InternalKnowledgeGenerator
 import json
+
+def ensure_ollama_is_running():
+    """
+    Sprawdza czy serwer Ollama jest uruchomiony na domyślnym porcie.
+    Jeśli nie, próbuje go automatycznie uruchomić w tle.
+    """
+    try:
+        response = requests.get("http://localhost:11434/", timeout=2)
+        if response.status_code == 200:
+            print("  [System] Serwer Ollama działa poprawnie.")
+            return
+    except requests.exceptions.RequestException:
+        pass # Ollama nie odpowiada, trzeba ją uruchomić
+
+    print("  [System] Nie wykryto serwera Ollama. Próba automatycznego uruchomienia w tle...")
+    try:
+        if os.name == 'nt':
+            # Windows: uruchamiamy bez blokowania konsoli
+            subprocess.Popen(
+                ["ollama", "serve"], 
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            # Linux/Mac
+            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Czekamy chwilę aż serwer wstanie
+        for _ in range(5):
+            time.sleep(2)
+            try:
+                if requests.get("http://localhost:11434/", timeout=2).status_code == 200:
+                    print("  [System] Serwer Ollama został pomyślnie uruchomiony!")
+                    return
+            except:
+                pass
+        print("  [System Ostrzeżenie] Nie udało się automatycznie połączyć z Ollamą po uruchomieniu.")
+    except FileNotFoundError:
+        print("  [System Błąd] Nie znaleziono polecenia 'ollama'. Upewnij się, że jest zainstalowana i dodana do zmiennych środowiskowych PATH.")
+    except Exception as e:
+        print(f"  [System Błąd] Błąd podczas uruchamiania Ollamy: {e}")
 
 class GameGen3DPipeline:
     def __init__(self):
@@ -37,6 +81,9 @@ class GameGen3DPipeline:
         12. Imagination (Text-to-Image Fallback)
         """
         print("=== Inicjalizacja GameGen-3D Pipeline ===")
+        
+        # Automatyczne uruchamianie Ollamy
+        ensure_ollama_is_running()
         
         # Inicjalizacja komponentów sztucznej inteligencji
         self.memory = MemoryManager()
