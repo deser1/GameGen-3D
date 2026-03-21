@@ -112,6 +112,56 @@ async def generate_model_async(req: GenerateRequest, background_tasks: Backgroun
         message="Zadanie zostało zlecone do kolejki."
     )
 
+class GenerateSceneRequest(BaseModel):
+    prompt: str
+    style: str = "Fotorealistyczny (PBR)"
+
+def run_scene_task(task_id: str, prompt: str, style: str):
+    """Funkcja uruchamiana w tle realizująca generowanie całej sceny."""
+    try:
+        output_filename = f"scene_{int(time.time())}.glb"
+        
+        def progress_callback(val, desc=""):
+            task_manager.update_task_progress(task_id, val, desc)
+            
+        scene_path, layout = pipeline.run_scene(
+            scene_prompt=prompt, 
+            output_filename=output_filename, 
+            style=style, 
+            progress=progress_callback
+        )
+        
+        scene_url = "/" + scene_path.replace("\\", "/").replace("output/", "files/", 1)
+        
+        result_data = {
+            "model_url": scene_url,
+            "stats": {"layout": layout},
+            "reference_url": None,
+            "sfx_url": None,
+            "vlm_feedback": None
+        }
+        
+        task_manager.mark_task_completed(task_id, result_data)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        task_manager.mark_task_failed(task_id, str(e))
+
+@app.post("/api/generate_scene", response_model=TaskResponse)
+async def generate_scene_async(req: GenerateSceneRequest, background_tasks: BackgroundTasks):
+    if not req.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt sceny nie może być pusty.")
+
+    task_id = task_manager.create_task(req.prompt, req.style)
+    background_tasks.add_task(run_scene_task, task_id, req.prompt, req.style)
+    
+    return TaskResponse(
+        task_id=task_id,
+        status="pending",
+        message="Zadanie generowania sceny zostało zlecone do kolejki."
+    )
+
 @app.get("/api/status/{task_id}")
 async def get_task_status(task_id: str):
     """Endpoint zwracający aktualny status generowania (do paska postępu w UI)."""

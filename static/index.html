@@ -16,18 +16,24 @@
 <body class="min-h-screen p-8">
 
     <div class="max-w-6xl mx-auto">
-        <header class="mb-8 border-b border-gray-700 pb-4">
-            <h1 class="text-4xl font-bold text-blue-400">🎲 GameGen-3D Studio</h1>
-            <p class="text-gray-400 mt-2">Niestandardowy, asynchroniczny interfejs webowy (odporny na odświeżanie).</p>
+        <header class="mb-8 border-b border-gray-700 pb-4 flex justify-between items-end">
+            <div>
+                <h1 class="text-4xl font-bold text-blue-400">🎲 GameGen-3D Studio</h1>
+                <p class="text-gray-400 mt-2">Niestandardowy, asynchroniczny interfejs webowy (odporny na odświeżanie).</p>
+            </div>
+            <div class="flex space-x-2">
+                <button id="tabSingle" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition">Pojedynczy Obiekt</button>
+                <button id="tabScene" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded font-semibold transition">Generowanie Scen</button>
+            </div>
         </header>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <!-- Panel Lewy: Kontrolki -->
             <div class="bg-gray-800 p-6 rounded-lg shadow-lg col-span-1">
-                <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">Konfiguracja</h2>
+                <h2 id="controlTitle" class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">Konfiguracja Obiektu</h2>
                 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium mb-1 text-gray-300">Opis obiektu 3D (Prompt)</label>
+                    <label id="promptLabel" class="block text-sm font-medium mb-1 text-gray-300">Opis obiektu 3D (Prompt)</label>
                     <textarea id="promptInput" rows="3" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="np. stary drewniany fotel, brązowy"></textarea>
                 </div>
 
@@ -42,7 +48,7 @@
                     </select>
                 </div>
 
-                <div class="mb-6 flex items-center">
+                <div class="mb-6 flex items-center" id="forceNewContainer">
                     <input type="checkbox" id="forceNewInput" class="w-4 h-4 text-blue-600 bg-gray-900 border-gray-700 rounded focus:ring-blue-500">
                     <label for="forceNewInput" class="ml-2 text-sm font-medium text-gray-300">Wymuś nową generację (ignoruj Cache)</label>
                 </div>
@@ -107,6 +113,37 @@
         const assetsContainer = document.getElementById('assetsContainer');
         
         let pollingInterval = null;
+        let currentMode = 'single'; // 'single' lub 'scene'
+
+        // Obsługa zakładek
+        const tabSingle = document.getElementById('tabSingle');
+        const tabScene = document.getElementById('tabScene');
+        const controlTitle = document.getElementById('controlTitle');
+        const promptLabel = document.getElementById('promptLabel');
+        const forceNewContainer = document.getElementById('forceNewContainer');
+        const generateBtn = document.getElementById('generateBtn');
+
+        tabSingle.addEventListener('click', () => {
+            currentMode = 'single';
+            tabSingle.className = "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition";
+            tabScene.className = "bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded font-semibold transition";
+            controlTitle.innerText = "Konfiguracja Obiektu";
+            promptLabel.innerText = "Opis obiektu 3D (Prompt)";
+            promptInput.placeholder = "np. stary drewniany fotel, brązowy";
+            forceNewContainer.style.display = "flex";
+            generateBtn.innerText = "🚀 Generuj Model 3D";
+        });
+
+        tabScene.addEventListener('click', () => {
+            currentMode = 'scene';
+            tabScene.className = "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold transition";
+            tabSingle.className = "bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded font-semibold transition";
+            controlTitle.innerText = "Konfiguracja Sceny";
+            promptLabel.innerText = "Opis całej sceny (Prompt)";
+            promptInput.placeholder = "np. Pokój alchemika z drewnianym stołem i starym kotłem";
+            forceNewContainer.style.display = "none";
+            generateBtn.innerText = "🌍 Generuj Scenę";
+        });
 
         // Sprawdzanie przy starcie strony czy mamy nieskończone zadanie w localStorage
         window.addEventListener('DOMContentLoaded', () => {
@@ -142,15 +179,22 @@
             </div>`;
 
             try {
-                // Krok 1: Wysłanie zadania do API
-                const response = await fetch('/api/generate', {
+                // Krok 1: Wysłanie zadania do API w zależności od trybu
+                const endpoint = currentMode === 'single' ? '/api/generate' : '/api/generate_scene';
+                
+                const requestBody = {
+                    prompt: prompt,
+                    style: styleInput.value
+                };
+                
+                if (currentMode === 'single') {
+                    requestBody.force_new = forceNewInput.checked;
+                }
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        prompt: prompt,
-                        style: styleInput.value,
-                        force_new: forceNewInput.checked
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
