@@ -31,9 +31,29 @@ GameGen-3D to potężny, kompleksowy system sztucznej inteligencji służący do
 Wymagany jest **Python 3.10+**, akceleracja **CUDA** (NVIDIA z min. 12-16GB VRAM) oraz zainstalowany lokalnie serwer **[Ollama](https://ollama.com/)** wraz z pobranymi modelami `llama3` i `llava`.
 
 ```bash
-# Instalacja wymaganych bibliotek (PyTorch, Diffusers, TripoSR, itp.)
+# Instalacja wymaganych bibliotek dla kart NVIDIA (CUDA)
 pip install -r requirements.txt
 ```
+
+### 🔴 Wsparcie dla kart AMD Radeon (Linux / ROCm)
+Uruchomienie systemu na kartach AMD jest możliwe na systemach Linux przy użyciu platformy ROCm. Należy pominąć standardową instalację PyTorch z pliku `requirements.txt` i zainstalować wersję dedykowaną dla ROCm.
+
+1. **Instalacja PyTorch dla AMD ROCm:**
+```bash
+# Zastąp wersję rocm6.0 najnowszą obsługiwaną przez Twoją dystrybucję
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0
+```
+2. **Instalacja reszty zależności:**
+```bash
+pip install diffusers transformers accelerate rembg gradio trimesh xatlas opencv-python duckduckgo-search chromadb
+```
+3. **Konfiguracja Ollama na AMD:**
+Ollama natywnie wspiera karty Radeon na Linuksie. Wystarczy zainstalować standardową wersję, a modele językowe będą akcelerowane sprzętowo. Wymagane modele pobierzesz komendami:
+```bash
+ollama run llama3
+ollama run llava
+```
+*Uwaga: Zależnie od środowiska, w plikach źródłowych `.py` wywołania sprawdzające `torch.cuda.is_available()` mogą wymagać mapowania zmiennych środowiskowych (np. `HSA_OVERRIDE_GFX_VERSION`), aby środowisko ROCm przedstawiło się PyTorchowi jako kompatybilne urządzenie obliczeniowe.*
 
 ## 🚀 Uruchomienie
 
