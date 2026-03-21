@@ -51,7 +51,7 @@ class GameGen3DPipeline:
         
         print("=== Gotowe do działania ===\n")
 
-    def run(self, prompt: str, output_filename: str = "model.glb", style: str = "Fotorealistyczny (PBR)", force_new: bool = False):
+    def run(self, prompt: str, output_filename: str = "model.glb", style: str = "Fotorealistyczny (PBR)", force_new: bool = False, progress=None):
         """
         Uruchamia pełen proces od tekstu po model 3D gotowy dla silnika gry.
         Jeśli 'force_new' jest False, sprawdza czy model nie znajduje się już w pamięci podręcznej.
@@ -59,13 +59,21 @@ class GameGen3DPipeline:
         print(f">>> Start Pipeline dla zapytania: '{prompt}' (Styl: {style}) <<<")
         start_time = time.time()
 
+        # Funkcja pomocnicza do raportowania postępu
+        def report_progress(val, msg):
+            if progress:
+                progress(val, desc=msg)
+            print(f"[{val*100:.0f}%] {msg}")
+
         # Etap -1: Pamięć Podręczna (Cache Check)
+        report_progress(0.05, "Sprawdzanie pamięci wektorowej (Cache)...")
         stats = {}
         sfx_path = None
         vlm_feedback = None
         if not force_new:
             cached_model = self.memory.check_memory(prompt, style)
             if cached_model:
+                report_progress(1.0, f"Znaleziono w pamięci! Odzyskiwanie modelu...")
                 print(f">>> Model wyciągnięty z Pamięci Wektorowej w {time.time() - start_time:.2f} sekundy! <<<")
                 
                 # Tworzymy folder tasku nawet dla zcacheowanego modelu, żeby zachować spójność struktury
@@ -86,7 +94,7 @@ class GameGen3DPipeline:
                 # Dla uproszczenia generujemy je na nowo dla cache'owanego modelu.
                 stats = self.logic_gen.generate_stats(prompt, style)
                 
-                return output_path, stats, None, None
+                return output_path, stats, None, None, task_dir
 
         # --- Tworzenie dedykowanego folderu dla zadania (Task Folder) ---
         from datetime import datetime
@@ -121,6 +129,7 @@ class GameGen3DPipeline:
             search_prompt += " anime cel shaded style"
 
         # Etap 0: Zebranie kontekstu wizualnego z Internetu
+        report_progress(0.1, "Wyszukiwanie obrazu referencyjnego w sieci i wycinanie tła...")
         reference_img = self.searcher.search_reference(search_prompt)
         if reference_img:
             ref_path = os.path.join(views_dir, "internet_reference.png")
@@ -128,6 +137,7 @@ class GameGen3DPipeline:
             print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
 
         # Etap 1: Generowanie obrazów referencyjnych (Multi-view) na podstawie sieci z wstrzyknięciem stylu
+        report_progress(0.25, "Generowanie 4 widoków (Multi-view) przy użyciu AI (Stable Diffusion)...")
         multi_views = self.text_to_views.generate(prompt, reference_image=reference_img, style=style)
         
         # Zapis podglądu wygenerowanych widoków
@@ -135,46 +145,57 @@ class GameGen3DPipeline:
             img.save(os.path.join(views_dir, f"view_{idx}.png"))
 
         # Etap 2: Szybka Rekonstrukcja bryły (Raw 3D) na bazie map głębi / TripoSR
+        report_progress(0.4, "Błyskawiczna rekonstrukcja modelu (TripoSR)...")
         raw_mesh = self.views_to_3d.reconstruct(multi_views)
 
         # Etap 3: Optymalizacja Game-Ready (Decimation & Smoothing)
+        report_progress(0.5, "Czyszczenie geometrii i decymacja (Optymalizacja Gamedev)...")
         # TripoSR generuje dość czystą siatkę, decymacja zadba o Low-Poly
         low_poly_mesh = self.mesh_optimizer.optimize_mesh(raw_mesh, target_polycount=2500)
 
         # Etap 4: UV Unwrapping
+        report_progress(0.55, "Rozkładanie siatki UV (Xatlas)...")
         self.mesh_optimizer.unwrap_uv(low_poly_mesh)
 
         # Etap 5: Teksturowanie (Albedo, Normal, Roughness) z użyciem Upscalera
+        report_progress(0.6, "Wypalanie fotorealistycznych tekstur PBR...")
         # Optymalizator zapisuje tekstury lokalnie wokół mesha, dlatego musimy przekazać mu poprawny folder
         # (Wymaga małej zmiany w GameMeshOptimizer, jeśli pliki są zapisywane fizycznie - nasz korzysta z obiektów w locie i osadza je w glb)
         pbr_textures = self.mesh_optimizer.bake_pbr_textures(multi_views, low_poly_mesh, apply_upscale=True)
 
         # Etap 6: Zapis i Generowanie LODów (Export)
+        report_progress(0.65, "Eksport modeli i generowanie poziomów detali (LOD)...")
         output_path = os.path.join(task_dir, output_filename)
         lod_files = self.mesh_optimizer.generate_lods(low_poly_mesh, output_path)
 
         # Etap 6.5: Generowanie siatki kolizyjnej do fizyki gry
+        report_progress(0.7, "Generowanie siatek kolizyjnych dla silnika fizycznego...")
         collision_path = self.mesh_optimizer.generate_collision_mesh(low_poly_mesh, output_path)
         
         # Etap 6.6: Auto-Rigging (Tworzenie podstawowego szkieletu)
+        report_progress(0.75, "Auto-Rigging (dodawanie szkieletu kości)...")
         # LLM na razie nie definiuje nam is_character przed logiką, więc spróbujemy to zgadnąć z promptu
         is_character = any(word in prompt.lower() for word in ["postać", "potwór", "ludzik", "zwierzę", "człowiek", "character", "monster"])
         rig_path = self.mesh_optimizer.auto_rig_model(low_poly_mesh, output_path, is_character=is_character)
 
         # Etap 6.7: 4D Animation (Blend Shapes / Morph Targets)
+        report_progress(0.78, "Tworzenie animacji proceduralnych 4D (Morph Targets)...")
         anim_path = self.mesh_optimizer.generate_4d_animation(low_poly_mesh, output_path)
 
         # Etap 6.8: Gaussian Splatting (Generowanie PLY)
+        report_progress(0.8, "Generowanie chmury punktów (Gaussian Splatting)...")
         base_name, _ = os.path.splitext(output_path)
         splat_path = self.gaussian.generate_splats(low_poly_mesh, pbr_textures["albedo"], f"{base_name}_splats.ply")
 
         # Etap 6.9: Warianty Tekstur (Procedural Wear)
+        report_progress(0.85, "Proceduralne warianty tekstur (śnieg, rdza, zniszczenia)...")
         texture_variants = self.texture_gen.generate_variants(pbr_textures["albedo"], prompt, ["snowy", "mossy", "burnt"], output_dir=textures_dir)
 
         # Etap 7: Zapisanie wspomnienia (Zapis do bazy wektorowej ChromaDB)
         self.memory.save_to_memory(prompt, style, lod_files[0])
         
         # Etap 8: Generowanie statystyk JSON dla logiki gry
+        report_progress(0.9, "Generowanie statystyk dla silnika gry (LLM)...")
         stats = self.logic_gen.generate_stats(prompt, style)
         
         # Zapiszmy statystyki do pliku JSON w folderze zadania
@@ -192,6 +213,7 @@ class GameGen3DPipeline:
             }
 
         # Etap 9: VLM Art Director Feedback (Ocena wizualna)
+        report_progress(0.95, "Dyrektor Artystyczny ocenia wygenerowany model (VLM)...")
         vlm_feedback = self.art_director.review_model(prompt, multi_views[0])
         
         # Zapiszmy ocenę
@@ -202,6 +224,7 @@ class GameGen3DPipeline:
                 json.dump(vlm_feedback, f, indent=4)
         
         # Etap 10: SFX Generation
+        report_progress(0.98, "Generowanie efektów dźwiękowych (SFX)...")
         sfx_path = os.path.join(sfx_dir, f"sound_{int(time.time())}.wav")
         sfx_result = self.sfx_gen.generate_sfx(
             prompt=prompt, 
@@ -210,12 +233,13 @@ class GameGen3DPipeline:
         )
 
         end_time = time.time()
+        report_progress(1.0, "Zakończono budowanie paczki!")
         print(f"\n>>> Zakończono z sukcesem w {end_time - start_time:.2f} sekundy. <<<")
         print(f"Paczka zasobów (Asset Pack) dostępna w: {task_dir}")
         
         return lod_files[0], stats, sfx_result, vlm_feedback, task_dir # Zwracamy task_dir dla interfejsu
 
-    def run_scene(self, scene_prompt: str, output_filename: str = "scene.glb", style: str = "Fotorealistyczny (PBR)"):
+    def run_scene(self, scene_prompt: str, output_filename: str = "scene.glb", style: str = "Fotorealistyczny (PBR)", progress=None):
         """
         Generuje całą scenę na podstawie promptu, używając Spatial LLM do zaplanowania obiektów.
         """

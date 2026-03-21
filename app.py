@@ -23,38 +23,45 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 print("Inicjalizacja aplikacji WebUI...")
 pipeline = GameGen3DPipeline()
 
-def generate_3d_model(prompt: str, style: str, force_new: bool):
+def generate_3d_model(prompt: str, style: str, force_new: bool, progress=gr.Progress()):
     """
     Funkcja łącząca Gradio z naszym rurociągiem AI.
+    Wykorzystuje mechanizm gr.Progress do raportowania stanu zadania w tle.
     """
     if not prompt.strip():
-        return None, "Wpisz jakiś prompt!"
+        return None, None, None, None, None, "Wpisz jakiś prompt!"
         
     output_filename = f"model_{int(time.time())}.glb"
     
     try:
+        progress(0.1, desc="Inicjalizacja i przeszukiwanie Internetu...")
         # Uruchomienie generowania z wybranym stylem i parametrem wymuszania
-        model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(prompt, output_filename, style=style, force_new=force_new)
+        model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(prompt, output_filename, style=style, force_new=force_new, progress=progress)
         
+        progress(0.95, desc="Pobieranie wyników i ładowanie podglądu...")
         # Pobieranie wygenerowanego widoku referencyjnego z folderu zadania
         ref_path = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
         preview_img = ref_path if ref_path and os.path.exists(ref_path) else None
         
-        return model_path, preview_img, stats, sfx_path, vlm_feedback, "Sukces! Model 3D wygenerowany."
+        return model_path, preview_img, stats, sfx_path, vlm_feedback, f"Sukces! Model 3D wygenerowany w: {task_dir}"
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return None, None, {"error": str(e)}, None, {"error": str(e)}, f"Wystąpił błąd: {str(e)}"
 
-def generate_scene(prompt: str, style: str):
+def generate_scene(prompt: str, style: str, progress=gr.Progress()):
     """
     Funkcja łącząca Gradio z rurociągiem do generowania całych scen.
     """
     if not prompt.strip():
-        return None, "Wpisz jakiś prompt!"
+        return None, None, "Wpisz jakiś prompt!"
         
     output_filename = f"scene_{int(time.time())}.glb"
     
     try:
-        scene_path, layout = pipeline.run_scene(prompt, output_filename, style=style)
+        progress(0.1, desc="Planowanie układu przestrzennego przez LLM...")
+        scene_path, layout = pipeline.run_scene(prompt, output_filename, style=style, progress=progress)
+        progress(1.0, desc="Zakończono budowanie sceny.")
         return scene_path, layout, "Sukces! Scena wygenerowana."
     except Exception as e:
         return None, {"error": str(e)}, f"Wystąpił błąd: {str(e)}"
@@ -153,5 +160,5 @@ with gr.Blocks(title="GameGen-3D Studio") as app:
 
 if __name__ == "__main__":
     # Uruchomienie lokalnego serwera Gradio
-    # share=False by zachować to na komputerze lokalnym (można zmienić na True, by udostępnić link)
-    app.launch(server_name="0.0.0.0", server_port=7860, share=False, theme=gr.themes.Monochrome())
+    # Włączenie systemu kolejkowania zapobiega ucinaniu zadań przy utracie połączenia w przeglądarce
+    app.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=7860, share=False, theme=gr.themes.Monochrome())
