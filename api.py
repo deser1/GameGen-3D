@@ -1,10 +1,12 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import time
 from src.pipeline import GameGen3DPipeline
+from src.task_manager import task_manager
 
 app = FastAPI(
     title="GameGen-3D API",
@@ -25,6 +27,10 @@ app.add_middleware(
 os.makedirs("output", exist_ok=True)
 app.mount("/files", StaticFiles(directory="output"), name="files")
 
+# Serwowanie plików statycznych frontendu (Web UI)
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 print("Inicjalizacja GameGen-3D Pipeline dla API...")
 pipeline = GameGen3DPipeline()
 
@@ -33,56 +39,89 @@ class GenerateRequest(BaseModel):
     style: str = "Fotorealistyczny (PBR)"
     force_new: bool = False
 
-class GenerateResponse(BaseModel):
+class TaskResponse(BaseModel):
+    task_id: str
     status: str
-    model_url: str
-    reference_url: str | None
-    stats: dict
-    sfx_url: str | None
-    vlm_feedback: dict | None
+    message: str
 
-@app.post("/generate", response_model=GenerateResponse)
-async def generate_model(req: GenerateRequest):
+def run_pipeline_task(task_id: str, prompt: str, style: str, force_new: bool):
+    """Funkcja uruchamiana w tle (Background Task) realizująca pełne generowanie."""
+    try:
+        output_filename = f"model_{int(time.time())}.glb"
+        
+        # Funkcja callback (zastępująca gr.Progress) raportująca do TaskManager
+        def progress_callback(val, desc=""):
+            task_manager.update_task_progress(task_id, val, desc)
+            
+        model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(
+            prompt=prompt, 
+            output_filename=output_filename, 
+            style=style, 
+            force_new=force_new,
+            progress=progress_callback
+        )
+        
+        # Budowanie adresów URL
+        model_url = "/" + model_path.replace("\\", "/").replace("output/", "files/", 1)
+        
+        ref_path_internet = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
+        ref_path_imagined = os.path.join(task_dir, "views", "imagined_reference.png") if task_dir else None
+        
+        ref_url = None
+        if ref_path_internet and os.path.exists(ref_path_internet):
+            ref_url = "/" + ref_path_internet.replace("\\", "/").replace("output/", "files/", 1)
+        elif ref_path_imagined and os.path.exists(ref_path_imagined):
+            ref_url = "/" + ref_path_imagined.replace("\\", "/").replace("output/", "files/", 1)
+            
+        sfx_url = "/" + sfx_path.replace("\\", "/").replace("output/", "files/", 1) if sfx_path and os.path.exists(sfx_path) else None
+        
+        result_data = {
+            "model_url": model_url,
+            "reference_url": ref_url,
+            "stats": stats,
+            "sfx_url": sfx_url,
+            "vlm_feedback": vlm_feedback
+        }
+        
+        task_manager.mark_task_completed(task_id, result_data)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        task_manager.mark_task_failed(task_id, str(e))
+
+
+@app.post("/api/generate", response_model=TaskResponse)
+async def generate_model_async(req: GenerateRequest, background_tasks: BackgroundTasks):
     """
-    Endpoint generujący model 3D na podstawie promptu.
-    Uwaga: W środowisku produkcyjnym generowanie synchroniczne potrwa chwilę.
-    Dla długich zadań można użyć Celery lub BackgroundTasks z poolingiem.
-    Tutaj dla prostoty trzymamy połączenie.
+    Endpoint zlecający generowanie modelu. Zwraca od razu Task ID,
+    który można odpytywać, aby uniknąć problemu zrywania połączeń w przeglądarce.
     """
     if not req.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt nie może być pusty.")
 
-    output_filename = f"model_{int(time.time())}.glb"
+    # Tworzenie nowego zadania
+    task_id = task_manager.create_task(req.prompt, req.style)
     
-    try:
-        model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(
-            prompt=req.prompt, 
-            output_filename=output_filename, 
-            style=req.style, 
-            force_new=req.force_new
-        )
-        
-        # Przygotowanie URL do wygenerowanych zasobów
-        # Oczekujemy ścieżek względem głównego katalogu (np. output/task_name/model.glb)
-        # i zamieniamy "output/" na nasz punkt montowania "/files/"
-        model_url = "/" + model_path.replace("\\", "/").replace("output/", "files/", 1)
-        
-        ref_path = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
-        ref_url = "/" + ref_path.replace("\\", "/").replace("output/", "files/", 1) if ref_path and os.path.exists(ref_path) else None
-        
-        sfx_url = "/" + sfx_path.replace("\\", "/").replace("output/", "files/", 1) if sfx_path and os.path.exists(sfx_path) else None
-        
-        return GenerateResponse(
-            status="success",
-            model_url=model_url,
-            reference_url=ref_url,
-            stats=stats,
-            sfx_url=sfx_url,
-            vlm_feedback=vlm_feedback
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Dodanie zadania do wykonania w tle przez serwer FastAPI
+    background_tasks.add_task(run_pipeline_task, task_id, req.prompt, req.style, req.force_new)
+    
+    return TaskResponse(
+        task_id=task_id,
+        status="pending",
+        message="Zadanie zostało zlecone do kolejki."
+    )
+
+@app.get("/api/status/{task_id}")
+async def get_task_status(task_id: str):
+    """Endpoint zwracający aktualny status generowania (do paska postępu w UI)."""
+    return task_manager.get_task_status(task_id)
+
+@app.get("/")
+async def serve_frontend():
+    """Główny interfejs webowy odporny na odświeżanie."""
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 @app.get("/health")
 async def health_check():

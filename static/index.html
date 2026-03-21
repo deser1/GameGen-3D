@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameGen-3D Studio</title>
+    <!-- Tailwind CSS do szybkiego stylowania -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Model Viewer do renderowania modeli 3D w przeglądarce -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <style>
+        body { background-color: #111827; color: #f3f4f6; }
+        model-viewer { width: 100%; height: 500px; background-color: #1f2937; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="min-h-screen p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 border-b border-gray-700 pb-4">
+            <h1 class="text-4xl font-bold text-blue-400">🎲 GameGen-3D Studio</h1>
+            <p class="text-gray-400 mt-2">Niestandardowy, asynchroniczny interfejs webowy (odporny na odświeżanie).</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Panel Lewy: Kontrolki -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-lg col-span-1">
+                <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">Konfiguracja</h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1 text-gray-300">Opis obiektu 3D (Prompt)</label>
+                    <textarea id="promptInput" rows="3" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500" placeholder="np. stary drewniany fotel, brązowy"></textarea>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1 text-gray-300">Styl Wizualny</label>
+                    <select id="styleInput" class="w-full bg-gray-900 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500">
+                        <option value="Fotorealistyczny (PBR)">Fotorealistyczny (PBR)</option>
+                        <option value="Low Poly Art">Low Poly Art</option>
+                        <option value="Voxel / Minecraft">Voxel / Minecraft</option>
+                        <option value="Cyberpunk / Sci-Fi">Cyberpunk / Sci-Fi</option>
+                        <option value="Cel-Shaded (Anime)">Cel-Shaded (Anime)</option>
+                    </select>
+                </div>
+
+                <div class="mb-6 flex items-center">
+                    <input type="checkbox" id="forceNewInput" class="w-4 h-4 text-blue-600 bg-gray-900 border-gray-700 rounded focus:ring-blue-500">
+                    <label for="forceNewInput" class="ml-2 text-sm font-medium text-gray-300">Wymuś nową generację (ignoruj Cache)</label>
+                </div>
+
+                <button id="generateBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded transition duration-200">
+                    🚀 Generuj Model 3D
+                </button>
+
+                <div class="mt-6">
+                    <h3 class="text-sm font-medium text-gray-400 mb-2">Status Zadania</h3>
+                    <div class="w-full bg-gray-700 rounded-full h-4 mb-2">
+                        <div id="progressBar" class="bg-blue-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <p id="statusText" class="text-xs text-gray-400">Oczekiwanie...</p>
+                </div>
+            </div>
+
+            <!-- Panel Prawy: Wyniki -->
+            <div class="col-span-1 lg:col-span-2 flex flex-col gap-6">
+                <!-- Podgląd 3D -->
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                    <h2 class="text-xl font-semibold mb-4">Podgląd Modelu 3D</h2>
+                    <div id="modelContainer">
+                        <div class="flex items-center justify-center h-[500px] bg-gray-900 rounded border border-gray-700 text-gray-500">
+                            Wpisz prompt i wygeneruj model, aby go zobaczyć.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dodatkowe zasoby (Zdjecie, Audio, Logika) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="assetsContainer" style="display: none;">
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
+                        <h3 class="text-lg font-semibold mb-3">Obraz Referencyjny</h3>
+                        <img id="refImage" src="" alt="Referencja" class="w-full rounded border border-gray-700 bg-gray-900 max-h-64 object-contain">
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold mb-3">Efekt Dźwiękowy (SFX)</h3>
+                            <audio id="sfxAudio" controls class="w-full mb-4">
+                                <source src="" type="audio/wav">
+                                Twoja przeglądarka nie obsługuje tagu audio.
+                            </audio>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-2">Logika Gry (Statystyki)</h3>
+                            <pre id="logicJson" class="bg-gray-900 p-3 rounded text-xs text-green-400 overflow-x-auto h-32"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const btn = document.getElementById('generateBtn');
+        const promptInput = document.getElementById('promptInput');
+        const styleInput = document.getElementById('styleInput');
+        const forceNewInput = document.getElementById('forceNewInput');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const modelContainer = document.getElementById('modelContainer');
+        const assetsContainer = document.getElementById('assetsContainer');
+        
+        let pollingInterval = null;
+
+        // Sprawdzanie przy starcie strony czy mamy nieskończone zadanie w localStorage
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTaskId = localStorage.getItem('gamegen_task_id');
+            if (savedTaskId) {
+                console.log("Znaleziono nieskończone zadanie. Wznawianie nasłuchiwania...", savedTaskId);
+                statusText.innerText = "Przywracanie sesji zadania...";
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                startPolling(savedTaskId);
+            }
+        });
+
+        btn.addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('Wpisz prompt!');
+                return;
+            }
+
+            // UI Update
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            progressBar.style.width = '0%';
+            statusText.innerText = 'Inicjalizacja wysyłania zadania...';
+            assetsContainer.style.display = 'none';
+            modelContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-[500px] bg-gray-900 rounded border border-gray-700 text-gray-500">
+                <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Trwa Generowanie. Nie odświeżaj strony (albo odśwież, to już nie zepsuje procesu!).
+            </div>`;
+
+            try {
+                // Krok 1: Wysłanie zadania do API
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        style: styleInput.value,
+                        force_new: forceNewInput.checked
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok && data.task_id) {
+                    // Zapisanie ID w Local Storage (DZIĘKI TEMU JEST ODPORNE NA ODŚWIEŻANIE!)
+                    localStorage.setItem('gamegen_task_id', data.task_id);
+                    startPolling(data.task_id);
+                } else {
+                    throw new Error(data.detail || 'Błąd inicjalizacji zadania');
+                }
+            } catch (err) {
+                statusText.innerText = `Błąd: ${err.message}`;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+
+        function startPolling(taskId) {
+            if (pollingInterval) clearInterval(pollingInterval);
+            
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/status/${taskId}`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'not_found') {
+                        clearInterval(pollingInterval);
+                        localStorage.removeItem('gamegen_task_id');
+                        statusText.innerText = "Zadanie wygasło lub nie istnieje na serwerze.";
+                        resetBtn();
+                        return;
+                    }
+
+                    // Aktualizacja UI postępu
+                    const pct = Math.round(data.progress * 100);
+                    progressBar.style.width = `${pct}%`;
+                    statusText.innerText = `[${pct}%] ${data.message}`;
+
+                    // Jeśli zadanie zakończone sukcesem
+                    if (data.status === 'completed') {
+                        clearInterval(pollingInterval);
+                        localStorage.removeItem('gamegen_task_id'); // Czyszczenie
+                        showResults(data.result);
+                        resetBtn();
+                    }
+                    
+                    // Jeśli zadanie zakończone błędem
+                    if (data.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        localStorage.removeItem('gamegen_task_id');
+                        statusText.innerText = `[Błąd] ${data.error}`;
+                        statusText.classList.add('text-red-400');
+                        resetBtn();
+                    }
+
+                } catch (err) {
+                    console.error("Błąd odpytywania API", err);
+                }
+            }, 1500); // Odpytywanie co 1.5 sekundy
+        }
+
+        function resetBtn() {
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        function showResults(res) {
+            statusText.innerText = "Zakończono sukcesem! Ładowanie zasobów...";
+            
+            // 1. Model 3D
+            if (res.model_url) {
+                // Wymuszamy ominięcie cache przeglądarki przez dodanie timestampu
+                const bust = `?t=${new Date().getTime()}`;
+                modelContainer.innerHTML = `
+                    <model-viewer 
+                        src="${res.model_url}${bust}" 
+                        auto-rotate 
+                        camera-controls 
+                        shadow-intensity="1"
+                        exposure="1.2">
+                    </model-viewer>
+                `;
+            }
+
+            // Pokaż kontener z dodatkami
+            assetsContainer.style.display = 'grid';
+
+            // 2. Zdjęcie referencyjne
+            if (res.reference_url) {
+                document.getElementById('refImage').src = res.reference_url + `?t=${new Date().getTime()}`;
+            }
+
+            // 3. Audio SFX
+            if (res.sfx_url) {
+                const audioPlayer = document.getElementById('sfxAudio');
+                audioPlayer.src = res.sfx_url + `?t=${new Date().getTime()}`;
+                audioPlayer.load();
+            }
+
+            // 4. Logika JSON
+            if (res.stats) {
+                document.getElementById('logicJson').innerText = JSON.stringify(res.stats, null, 2);
+            }
+        }
+    </script>
+</body>
+</html>
