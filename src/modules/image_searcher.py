@@ -93,15 +93,19 @@ class ImageReferenceSearcher:
     def _download_image(self, url: str) -> Image.Image:
         """Pobiera obraz z podanego adresu URL."""
         try:
-            # Ustawiamy nagłówek User-Agent, aby unikać blokad
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            
-            img = Image.open(BytesIO(response.content)).convert("RGB")
-            return img
+            # Udajemy przeglądarkę, żeby ominąć blokady (np. Cloudflare, błędy 403 Forbidden)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            response = requests.get(url, stream=True, timeout=10, headers=headers)
+            if response.status_code == 200:
+                img = Image.open(response.raw).convert("RGB")
+                return img
+            else:
+                print(f"  [Searcher Ostrzeżenie] Nie udało się pobrać zdjęcia z URL. Kod błędu HTTP: {response.status_code}")
+                return None
         except Exception as e:
-            print(f"  [Błąd] Nie udało się pobrać obrazu z {url}: {e}")
+            # Zignorowanie logowania błędów timeout dla każdego zepsutego linku, by nie śmiecić konsoli
             return None
 
     def _verify_single_object(self, image: Image.Image) -> bool:
