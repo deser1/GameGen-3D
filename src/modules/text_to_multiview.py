@@ -94,13 +94,18 @@ class TextToMultiViewGenerator:
                 
             for i, view in enumerate(views):
                 view_prompt = f"{enhanced_prompt}, {view}, white background, centered"
-                print(f"  -> Generowanie: {view_prompt}")
+                print(f"  -> Przygotowywanie widoku: {view}")
                 
                 # Używamy ControlNetu, by kształt (sylwetka) z pierwszego zdjęcia 
                 # został zachowany przy generowaniu widoków bocznych (strength = wierność kolorom, controlnet = wierność kształtowi)
                 strength = 0.4 if i == 0 and reference_image else 0.85
                 controlnet_conditioning_scale = 1.0 if i == 0 else 0.6 # Słabszy wpływ krawędzi z przodu na widok z boku
+
+                # Niestety nie możemy bezpośrednio podmienić desc w domyślnym pasku pipeline.
+                # Wyłączymy domyślny pasek diffusers i zrobimy po prostu własny napis lub własny callback
+                self.pipeline.set_progress_bar_config(disable=True)
                 
+                print(f"     [SD] Rysowanie detali ({view}) przez sieć neuronową...")
                 image = self.pipeline(
                     prompt=view_prompt,
                     image=ref_img,

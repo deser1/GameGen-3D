@@ -55,6 +55,9 @@ class TextureVariantGenerator:
             negative_prompt = "shadows, highlights, 3d render, background, out of focus, blurry"
             
             try:
+                self.pipe.set_progress_bar_config(disable=True)
+                print(f"     [SD Img2Img] Przetwarzanie tekstury dla wariantu ({var})...")
+                
                 # strength określa jak bardzo zmieniamy obraz. 0.6-0.75 jest dobre do zachowania kształtu
                 output_img = self.pipe(
                     prompt=prompt,

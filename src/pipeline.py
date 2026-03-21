@@ -16,6 +16,7 @@ from src.modules.sfx_generator import SFXGenerator
 from src.modules.gaussian_splatter import GaussianSplatter
 from src.modules.texture_variants import TextureVariantGenerator
 from src.modules.scene_generator import SceneGeneratorLLM
+from src.modules.imagination import InternalKnowledgeGenerator
 import json
 
 class GameGen3DPipeline:
@@ -33,6 +34,7 @@ class GameGen3DPipeline:
         9. Gaussian Splatting (PointCloud PLY)
         10. Texture Variants (Procedural Wear)
         11. Scene Generator (Spatial LLM)
+        12. Imagination (Text-to-Image Fallback)
         """
         print("=== Inicjalizacja GameGen-3D Pipeline ===")
         
@@ -48,6 +50,7 @@ class GameGen3DPipeline:
         self.gaussian = GaussianSplatter()
         self.texture_gen = TextureVariantGenerator()
         self.scene_gen = SceneGeneratorLLM()
+        self.imagination = InternalKnowledgeGenerator()
         
         print("=== Gotowe do działania ===\n")
 
@@ -137,10 +140,20 @@ class GameGen3DPipeline:
         # Etap 0: Zebranie kontekstu wizualnego z Internetu
         report_progress(0.1, "Wyszukiwanie obrazu referencyjnego w sieci i wycinanie tła...")
         reference_img = self.searcher.search_reference(search_prompt)
+        
         if reference_img:
             ref_path = os.path.join(views_dir, "internet_reference.png")
             reference_img.save(ref_path)
             print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
+        else:
+            report_progress(0.15, "Brak zdjęcia w sieci. Uruchamianie wewnętrznej wyobraźni AI (Text-to-Image)...")
+            print("  [Pipeline] Fallback do wewnętrznego generatora wiedzy wizualnej.")
+            reference_img = self.imagination.imagine_object(prompt, style)
+            if reference_img:
+                ref_path = os.path.join(views_dir, "imagined_reference.png")
+                reference_img.save(ref_path)
+            else:
+                raise ValueError("Nie udało się ani znaleźć referencji, ani wygenerować jej z wyobraźni.")
 
         # Etap 1: Generowanie obrazów referencyjnych (Multi-view) na podstawie sieci z wstrzyknięciem stylu
         report_progress(0.25, "Generowanie 4 widoków (Multi-view) przy użyciu AI (Stable Diffusion)...")
