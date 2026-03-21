@@ -40,8 +40,14 @@ def generate_3d_model(prompt: str, style: str, force_new: bool, progress=gr.Prog
         model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(prompt, output_filename, style=style, force_new=force_new, progress=progress)
         
         # Pobieranie wygenerowanego widoku referencyjnego z folderu zadania
-        ref_path = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
-        preview_img = ref_path if ref_path and os.path.exists(ref_path) else None
+        ref_path_internet = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
+        ref_path_imagined = os.path.join(task_dir, "views", "imagined_reference.png") if task_dir else None
+        
+        preview_img = None
+        if ref_path_internet and os.path.exists(ref_path_internet):
+            preview_img = ref_path_internet
+        elif ref_path_imagined and os.path.exists(ref_path_imagined):
+            preview_img = ref_path_imagined
         
         total_time = time.time() - start_time
         m, s = divmod(int(total_time), 60)
