@@ -68,7 +68,7 @@ class MultiViewTo3DReconstructor:
             
         # Ekstrakcja siatki metodą Marching Cubes z wbudowanego algorytmu TripoSR
         print("  -> Ekstrakcja siatki w wysokiej rozdzielczości...")
-        meshes = self.model.extract_mesh(scene_codes, resolution=256)
+        meshes = self.model.extract_mesh(scene_codes, has_vertex_color=True, resolution=256)
         
         # Odbieramy pierwszy z wygenerowanych meshów
         tsr_mesh = meshes[0]
