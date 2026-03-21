@@ -145,6 +145,13 @@ class GameGen3DPipeline:
             ref_path = os.path.join(views_dir, "internet_reference.png")
             reference_img.save(ref_path)
             print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
+            
+            # --- NAUKA: Budowanie własnej wiedzy o świecie na podstawie znalezionych wektorów/pikseli/kolorów ---
+            report_progress(0.12, "Analiza wizualna: uczenie się wyglądu (kolor, tekstura, kształt) ze zdjęcia...")
+            visual_traits = self.art_director.extract_visual_traits(prompt, reference_img)
+            if visual_traits:
+                self.imagination.remember_visual_features(prompt, visual_traits)
+                
         else:
             report_progress(0.15, "Brak zdjęcia w sieci. Uruchamianie wewnętrznej wyobraźni AI (Text-to-Image)...")
             print("  [Pipeline] Fallback do wewnętrznego generatora wiedzy wizualnej.")

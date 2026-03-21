@@ -35,37 +35,71 @@ class InternalKnowledgeGenerator:
 
     def remember_visual_features(self, prompt: str, features: dict):
         """
-        Zapisuje cechy wizualne (teksturę, materiał, kształt) wywnioskowane np. przez VLM do bazy wektorowej.
+        Zapisuje zczytane cechy wizualne (teksturę, materiał, kształt, kolory) 
+        do bazy wektorowej, budując własną bibliotekę natury i przedmiotów.
         """
         try:
+            # Upewnienie się, że features to słownik składający się z tekstów
+            clean_features = {}
+            for k, v in features.items():
+                if isinstance(v, list):
+                    clean_features[k] = ", ".join(map(str, v))
+                elif isinstance(v, str):
+                    clean_features[k] = v
+                else:
+                    clean_features[k] = str(v)
+
+            if not clean_features:
+                return
+
             self.collection.add(
                 documents=[prompt],
-                metadatas=[features],
+                metadatas=[clean_features],
                 ids=[prompt.replace(" ", "_").lower()]
             )
-        except Exception:
-            pass # Ignorujemy błędy przy nadpisywaniu
+            print(f"  [Imagination] Zapisano do pamięci wizualnej cechy dla: '{prompt}'")
+        except Exception as e:
+            # Prawdopodobnie już istnieje w bazie, możemy go zaktualizować (upsert)
+            try:
+                self.collection.upsert(
+                    documents=[prompt],
+                    metadatas=[clean_features],
+                    ids=[prompt.replace(" ", "_").lower()]
+                )
+                print(f"  [Imagination] Zaktualizowano w pamięci wizualnej cechy dla: '{prompt}'")
+            except Exception as e2:
+                print(f"  [Imagination Błąd] Nie udało się zapisać cech: {e2}")
 
     def recall_visual_features(self, prompt: str) -> str:
         """
         Przeszukuje "Wizualną Bazę Wiedzy", by przypomnieć sobie jak zazwyczaj wygląda dany obiekt.
-        Zwraca wzbogacony opis (prompt modifier).
+        Na podstawie zapamiętanych wektorów i pikseli (jako metadane) składa bogaty prompt.
         """
         try:
             results = self.collection.query(query_texts=[prompt], n_results=1)
             if results and results['metadatas'] and len(results['metadatas'][0]) > 0:
                 meta = results['metadatas'][0][0]
                 recalled = []
-                if 'texture' in meta: recalled.append(meta['texture'])
-                if 'material' in meta: recalled.append(meta['material'])
-                if 'shape' in meta: recalled.append(meta['shape'])
+                
+                if 'colors' in meta: recalled.append(f"dominant colors: {meta['colors']}")
+                if 'texture' in meta: recalled.append(f"texture: {meta['texture']}")
+                if 'material_or_surface' in meta: recalled.append(f"made of {meta['material_or_surface']}")
+                if 'shape' in meta: recalled.append(f"shape: {meta['shape']}")
+                if 'specific_features' in meta: recalled.append(f"features: {meta['specific_features']}")
+                if 'size_category' in meta: recalled.append(f"size: {meta['size_category']}")
+                
+                # Dodatkowy fallback na stare klucze
+                if not recalled:
+                    if 'texture' in meta: recalled.append(meta['texture'])
+                    if 'material' in meta: recalled.append(meta['material'])
+                    if 'shape' in meta: recalled.append(meta['shape'])
                 
                 if recalled:
                     mem = ", ".join(recalled)
-                    print(f"  [Imagination] Przypomniałem sobie cechy tego obiektu: {mem}")
+                    print(f"  [Imagination] Znalazłem we własnej bazie wiedzy informacje o '{prompt}': {mem}")
                     return mem
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  [Imagination] Błąd podczas przypominania: {e}")
         return ""
 
     def imagine_object(self, prompt: str, style: str) -> Image.Image:
