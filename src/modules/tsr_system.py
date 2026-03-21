@@ -171,7 +171,10 @@ class TSR(BaseModule):
     def extract_mesh(self, scene_codes, has_vertex_color, resolution: int = 256, threshold: float = 25.0):
         self.set_marching_cubes_resolution(resolution)
         meshes = []
-        for scene_code in scene_codes:
+        for i, scene_code in enumerate(scene_codes):
+            prefix = f"    [Siatka {i+1}/{len(scene_codes)}]" if len(scene_codes) > 1 else "    "
+            
+            print(f"{prefix}[25%] Obliczanie gęstości pola NeRF...")
             with torch.no_grad():
                 density = self.renderer.query_triplane(
                     self.decoder,
@@ -182,24 +185,32 @@ class TSR(BaseModule):
                     ),
                     scene_code,
                 )["density_act"]
+            
+            print(f"{prefix}[50%] Wykonywanie algorytmu Marching Cubes (to może potrwać)...")
             v_pos, t_pos_idx = self.isosurface_helper(-(density - threshold))
             v_pos = scale_tensor(
                 v_pos,
                 self.isosurface_helper.points_range,
                 (-self.renderer.cfg.radius, self.renderer.cfg.radius),
             )
+            
             color = None
             if has_vertex_color:
+                print(f"{prefix}[75%] Ekstrakcja kolorów z Triplane dla wierzchołków...")
                 with torch.no_grad():
                     color = self.renderer.query_triplane(
                         self.decoder,
                         v_pos,
                         scene_code,
                     )["color"]
+            
+            print(f"{prefix}[90%] Budowanie obiektu 3D (Trimesh)...")
             mesh = trimesh.Trimesh(
                 vertices=v_pos.cpu().numpy(),
                 faces=t_pos_idx.cpu().numpy(),
                 vertex_colors=color.cpu().numpy() if has_vertex_color else None,
             )
             meshes.append(mesh)
+            print(f"{prefix}[100%] Siatka gotowa!")
+            
         return meshes
