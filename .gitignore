@@ -1,0 +1,45 @@
+# Pamięć podręczna i logi
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Środowiska wirtualne Pythona
+venv/
+env/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# Narzędzia systemowe i IDE
+.vscode/
+.idea/
+.vs/
+*.swp
+*.sqlite3
+.DS_Store
+Thumbs.db
+
+# Pliki konfiguracyjne specyficzne dla środowiska (opcjonalnie)
+.env.local
+
+# Folder wyjściowy (wygenerowane modele, tekstury, sfx, widoki)
+# Zazwyczaj nie wrzucamy gigabajtów wygenerowanych modeli do repozytorium
+output/
+
+# Baza wektorowa pamięci modeli
+chroma_db/
+
+# Pobrane modele uczenia maszynowego
+# (Wagi modeli HuggingFace zazwyczaj lądują w ~/.cache/huggingface, 
+# ale na wszelki wypadek ignorujemy lokalne foldery z modelami, jeśli takie powstaną)
+models/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Klonowane repozytoria zależności (TripoSR)
+src/TripoSR_repo/
