@@ -34,16 +34,23 @@ def generate_3d_model(prompt: str, style: str, force_new: bool, progress=gr.Prog
     output_filename = f"model_{int(time.time())}.glb"
     
     try:
-        progress(0.1, desc="Inicjalizacja i przeszukiwanie Internetu...")
+        start_time = time.time()
+        progress(0.1, desc="[00:00:00] Inicjalizacja i przeszukiwanie Internetu...")
         # Uruchomienie generowania z wybranym stylem i parametrem wymuszania
         model_path, stats, sfx_path, vlm_feedback, task_dir = pipeline.run(prompt, output_filename, style=style, force_new=force_new, progress=progress)
         
-        progress(0.95, desc="Pobieranie wyników i ładowanie podglądu...")
         # Pobieranie wygenerowanego widoku referencyjnego z folderu zadania
         ref_path = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
         preview_img = ref_path if ref_path and os.path.exists(ref_path) else None
         
-        return model_path, preview_img, stats, sfx_path, vlm_feedback, f"Sukces! Model 3D wygenerowany w: {task_dir}"
+        total_time = time.time() - start_time
+        m, s = divmod(int(total_time), 60)
+        h, m = divmod(m, 60)
+        final_time_str = f"{h:02d}:{m:02d}:{s:02d}"
+        
+        progress(1.0, desc=f"[{final_time_str}] Pobieranie wyników i ładowanie podglądu...")
+        
+        return model_path, preview_img, stats, sfx_path, vlm_feedback, f"Sukces! Model 3D wygenerowany w: {task_dir} (Czas: {final_time_str})"
     except Exception as e:
         import traceback
         traceback.print_exc()

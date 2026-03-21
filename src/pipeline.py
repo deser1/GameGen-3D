@@ -59,11 +59,17 @@ class GameGen3DPipeline:
         print(f">>> Start Pipeline dla zapytania: '{prompt}' (Styl: {style}) <<<")
         start_time = time.time()
 
-        # Funkcja pomocnicza do raportowania postępu
+        # Funkcja pomocnicza do raportowania postępu z czasem
         def report_progress(val, msg):
+            elapsed = time.time() - start_time
+            m, s = divmod(int(elapsed), 60)
+            h, m = divmod(m, 60)
+            time_str = f"{h:02d}:{m:02d}:{s:02d}"
+            
+            full_msg = f"[{time_str}] {msg}"
             if progress:
-                progress(val, desc=msg)
-            print(f"[{val*100:.0f}%] {msg}")
+                progress(val, desc=full_msg)
+            print(f"[{val*100:.0f}%] {full_msg}")
 
         # Etap -1: Pamięć Podręczna (Cache Check)
         report_progress(0.05, "Sprawdzanie pamięci wektorowej (Cache)...")
@@ -233,8 +239,13 @@ class GameGen3DPipeline:
         )
 
         end_time = time.time()
-        report_progress(1.0, "Zakończono budowanie paczki!")
-        print(f"\n>>> Zakończono z sukcesem w {end_time - start_time:.2f} sekundy. <<<")
+        total_time = end_time - start_time
+        m, s = divmod(int(total_time), 60)
+        h, m = divmod(m, 60)
+        final_time_str = f"{h:02d}:{m:02d}:{s:02d}"
+        
+        report_progress(1.0, f"Zakończono budowanie paczki! (Czas: {final_time_str})")
+        print(f"\n>>> Zakończono z sukcesem w czasie {final_time_str} <<<")
         print(f"Paczka zasobów (Asset Pack) dostępna w: {task_dir}")
         
         return lod_files[0], stats, sfx_result, vlm_feedback, task_dir # Zwracamy task_dir dla interfejsu
