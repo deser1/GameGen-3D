@@ -70,3 +70,26 @@ Uruchamia bezgłowy serwer gotowy na przyjmowanie zapytań POST z silnika gry (n
 ```bash
 python api.py
 ```
+
+## 🔧 Rozwiązywanie problemów (Troubleshooting)
+
+### Problem z kompilacją `torchmcubes` (Windows)
+Standardowa implementacja TripoSR wymaga pakietu `torchmcubes`, który może być trudny do skompilowania na systemie Windows ze względu na zależności C++. 
+Z tego powodu w naszym kodzie użyliśmy własnego mechanizmu **fallback**. 
+
+Jeśli w przyszłości pobierzesz świeżą wersję oryginalnego repozytorium TripoSR, musisz zmodyfikować jej plik `tsr/models/isosurface.py`, aby korzystał z biblioteki `PyMCubes` (którą łatwo zainstalować przez pip: `pip install PyMCubes`).
+Dodaj na samej górze pliku `isosurface.py`:
+```python
+try:
+    from torchmcubes import marching_cubes
+except ImportError:
+    print("[TripoSR Ostrzeżenie] Nie znaleziono torchmcubes. Używam PyMCubes jako fallback.")
+    import mcubes
+    def marching_cubes(volume, isovalue):
+        volume_np = volume.cpu().numpy()
+        vertices, faces = mcubes.marching_cubes(volume_np, isovalue)
+        vertices_tensor = torch.from_numpy(vertices.astype(np.float32)).to(volume.device)
+        faces_tensor = torch.from_numpy(faces.astype(np.int64)).to(volume.device)
+        return vertices_tensor, faces_tensor
+```
+Zmniejsz także rozdzielczość siatki w wywołaniu `extract_mesh` (np. na `192` zamiast `256`), aby zapobiec zawieszaniu się procesu (bottleneck procesora). W naszym repozytorium ta zmiana jest już zaimplementowana w `src/modules/tsr_system.py`.
