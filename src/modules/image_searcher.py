@@ -152,7 +152,7 @@ class ImageReferenceSearcher:
         """
         Wyszukuje obrazy pasujące do promptu, weryfikuje kolorystykę,
         usuwa z nich tło za pomocą rembg i weryfikuje czy na zdjęciu znajduje się tylko jeden obiekt.
-        Zwraca czysty obiekt.
+        Zwraca czysty obiekt. Posiada wbudowany timeout na wypadek braku internetu.
         """
         search_query = f"{prompt} 3d model concept art white background isolated"
         print(f"[Searcher] Wyszukiwanie referencji w sieci: '{search_query}'")
@@ -162,14 +162,19 @@ class ImageReferenceSearcher:
         if target_colors:
             print(f"  [Searcher] Wymagane kolory do analizy wizyjnej: {target_colors}")
         
-        max_retries = 3
+        max_retries = 2 # Zmniejszone z 3, aby szybciej przechodzić do wyobraźni w razie awarii sieci
         for attempt in range(max_retries):
             try:
-                with DDGS() as ddgs:
+                # Ograniczamy czas wykonania zapytania do DuckDuckGo za pomocą własnego proxy timeout
+                # Ustawiamy timeout globalny na 10 sekund dla całej wyszukiwarki (jeśli DDGS by się zawiesiło)
+                with DDGS(timeout=10) as ddgs:
                     # Pobieramy więcej wyników, bo niektóre mogą odpaść na weryfikacji koloru lub ilości obiektów
-                    # Używamy regionu domyślnego, aby uniknąć limitów
                     results_gen = ddgs.images(search_query, max_results=max_results + 10)
                     results = list(results_gen)
+                    
+                    if not results:
+                        print("  [Searcher] Brak wyników z wyszukiwarki. Przechodzę do wyobraźni.")
+                        return None
                     
                     for res in results:
                         image_url = res.get('image')
@@ -198,18 +203,24 @@ class ImageReferenceSearcher:
                 return None
                 
             except Exception as e:
-                error_msg = str(e)
-                print(f"[Searcher] Błąd wyszukiwania (Próba {attempt+1}/{max_retries}): {error_msg}")
-                if "403 Ratelimit" in error_msg or "Ratelimit" in error_msg:
+                error_msg = str(e).lower()
+                print(f"[Searcher] Błąd wyszukiwania (Próba {attempt+1}/{max_retries}): {e}")
+                
+                # Jeśli błąd to timeout sieciowy, brak internetu lub DNS resolution failed, od razu przerywamy pętlę i przechodzimy do wyobraźni
+                if any(kw in error_msg for kw in ["timeout", "connection", "network is unreachable", "name resolution", "read timeout"]):
+                    print("  [Searcher] Poważny problem z siecią/Internetem. Natychmiastowe przerwanie i przejście do Wewnętrznej Wyobraźni AI.")
+                    return None
+                    
+                if "403 ratelimit" in error_msg or "ratelimit" in error_msg:
                     if attempt < max_retries - 1:
-                        sleep_time = random.uniform(2.0, 5.0)
+                        sleep_time = random.uniform(2.0, 4.0)
                         print(f"  [Searcher] DuckDuckGo nałożyło limit. Czekam {sleep_time:.1f} sekund...")
                         time.sleep(sleep_time)
                     else:
                         print("  [Searcher] Przekroczono limit prób DuckDuckGo.")
                         return None
                 else:
-                    # Inny błąd, zwracamy None
+                    # Inny nieznany błąd - lepiej zrezygnować by nie zawieszać systemu
                     return None
                     
         return None
