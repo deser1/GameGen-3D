@@ -4,7 +4,7 @@ import scipy.io.wavfile as wavfile
 from diffusers import AudioLDMPipeline
 
 class SFXGenerator:
-    def __init__(self, model_id: str = "cvssp/audioldm-s-2-v2"):
+    def __init__(self, model_id: str = "cvssp/audioldm-m-full"):
         """
         Moduł generatora efektów dźwiękowych (SFX) na podstawie tekstu.
         Używa małego modelu AudioLDM, aby wygenerować np. dźwięk uderzenia w obiekt.
