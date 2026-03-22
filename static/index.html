@@ -151,14 +151,27 @@
             generateBtn.innerText = "🌍 Generuj Scenę";
         });
 
+        function showLoader() {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            assetsContainer.style.display = 'none';
+            document.getElementById('downloadBtn').style.display = 'none';
+            modelContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-[500px] bg-gray-900 rounded border border-gray-700 text-gray-500">
+                <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Trwa Generowanie. Nie odświeżaj strony (albo odśwież, to już nie zepsuje procesu!).
+            </div>`;
+        }
+
         // Sprawdzanie przy starcie strony czy mamy nieskończone zadanie w localStorage
         window.addEventListener('DOMContentLoaded', () => {
             const savedTaskId = localStorage.getItem('gamegen_task_id');
             if (savedTaskId) {
                 console.log("Znaleziono nieskończone zadanie. Wznawianie nasłuchiwania...", savedTaskId);
                 statusText.innerText = "Przywracanie sesji zadania...";
-                btn.disabled = true;
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                showLoader();
                 startPolling(savedTaskId);
             }
         });
@@ -171,18 +184,9 @@
             }
 
             // UI Update
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
             progressBar.style.width = '0%';
             statusText.innerText = 'Inicjalizacja wysyłania zadania...';
-            assetsContainer.style.display = 'none';
-            modelContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-[500px] bg-gray-900 rounded border border-gray-700 text-gray-500">
-                <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Trwa Generowanie. Nie odświeżaj strony (albo odśwież, to już nie zepsuje procesu!).
-            </div>`;
+            showLoader();
 
             try {
                 // Krok 1: Wysłanie zadania do API w zależności od trybu
