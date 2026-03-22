@@ -211,7 +211,7 @@ class GameGen3DPipeline:
 
         # Etap 1: Generowanie obrazów referencyjnych (Multi-view) na podstawie sieci z wstrzyknięciem stylu
         report_progress(0.25, "Generowanie 4 widoków (Multi-view) przy użyciu AI (Stable Diffusion)...")
-        multi_views = self.text_to_views.generate(prompt, reference_image=reference_img, style=style)
+        multi_views = self.text_to_views.generate(prompt, reference_image=reference_img, style=style, progress_callback=report_progress)
         
         # Zapis podglądu wygenerowanych widoków
         for idx, img in enumerate(multi_views):
@@ -219,7 +219,7 @@ class GameGen3DPipeline:
 
         # Etap 2: Szybka Rekonstrukcja bryły (Raw 3D) na bazie map głębi / TripoSR
         report_progress(0.4, "Błyskawiczna rekonstrukcja modelu (TripoSR)...")
-        raw_mesh = self.views_to_3d.reconstruct(multi_views)
+        raw_mesh = self.views_to_3d.reconstruct(multi_views, progress_callback=report_progress)
 
         # Etap 3: Optymalizacja Game-Ready (Decimation & Smoothing)
         report_progress(0.5, "Czyszczenie geometrii i decymacja (Optymalizacja Gamedev)...")

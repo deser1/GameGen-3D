@@ -168,13 +168,16 @@ class TSR(BaseModule):
             return
         self.isosurface_helper = MarchingCubeHelper(resolution)
 
-    def extract_mesh(self, scene_codes, has_vertex_color, resolution: int = 256, threshold: float = 25.0):
+    def extract_mesh(self, scene_codes, has_vertex_color, resolution: int = 256, threshold: float = 25.0, progress_callback=None):
         self.set_marching_cubes_resolution(resolution)
         meshes = []
         for i, scene_code in enumerate(scene_codes):
             prefix = f"    [Siatka {i+1}/{len(scene_codes)}]" if len(scene_codes) > 1 else "    "
             
-            print(f"{prefix}[25%] Obliczanie gęstości pola NeRF...")
+            msg1 = f"{prefix}[25%] Obliczanie gęstości pola NeRF..."
+            print(msg1)
+            if progress_callback: progress_callback(0.42, "Obliczanie gęstości pola NeRF...")
+                
             with torch.no_grad():
                 density = self.renderer.query_triplane(
                     self.decoder,
@@ -186,7 +189,10 @@ class TSR(BaseModule):
                     scene_code,
                 )["density_act"]
             
-            print(f"{prefix}[50%] Wykonywanie algorytmu Marching Cubes (to może potrwać)...")
+            msg2 = f"{prefix}[50%] Wykonywanie algorytmu Marching Cubes (to może potrwać)..."
+            print(msg2)
+            if progress_callback: progress_callback(0.45, "Wykonywanie algorytmu Marching Cubes (to może potrwać)...")
+                
             v_pos, t_pos_idx = self.isosurface_helper(-(density - threshold))
             v_pos = scale_tensor(
                 v_pos,
@@ -196,7 +202,10 @@ class TSR(BaseModule):
             
             color = None
             if has_vertex_color:
-                print(f"{prefix}[75%] Ekstrakcja kolorów z Triplane dla wierzchołków...")
+                msg3 = f"{prefix}[75%] Ekstrakcja kolorów z Triplane dla wierzchołków..."
+                print(msg3)
+                if progress_callback: progress_callback(0.47, "Ekstrakcja kolorów z Triplane dla wierzchołków...")
+                    
                 with torch.no_grad():
                     color = self.renderer.query_triplane(
                         self.decoder,
@@ -204,7 +213,10 @@ class TSR(BaseModule):
                         scene_code,
                     )["color"]
             
-            print(f"{prefix}[90%] Budowanie obiektu 3D (Trimesh)...")
+            msg4 = f"{prefix}[90%] Budowanie obiektu 3D (Trimesh)..."
+            print(msg4)
+            if progress_callback: progress_callback(0.49, "Budowanie obiektu 3D (Trimesh)...")
+                
             mesh = trimesh.Trimesh(
                 vertices=v_pos.cpu().numpy(),
                 faces=t_pos_idx.cpu().numpy(),

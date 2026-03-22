@@ -42,12 +42,14 @@ class MultiViewTo3DReconstructor:
                 print(f"[Błąd] Nie udało się załadować TripoSR. Błąd: {e}")
                 self.model = None
 
-    def reconstruct(self, images: list[Image.Image]) -> trimesh.Trimesh:
+    def reconstruct(self, images: list[Image.Image], progress_callback=None) -> trimesh.Trimesh:
         """
         Przetwarza przedni widok wygenerowany przez SD (z usuniętym tłem)
         bezpośrednio w siatkę (mesh) za pomocą TripoSR.
         """
         print(f"[Reconstruct] Uruchamianie TripoSR LRM na głównym obrazie...")
+        if progress_callback:
+            progress_callback(0.41, "Uruchamianie sieci LRM (przewidywanie pola NeRF)...")
         
         if self.model is None:
             print("[Reconstruct] Fallback do icosphere (brak modelu)")
@@ -69,7 +71,13 @@ class MultiViewTo3DReconstructor:
         # Ekstrakcja siatki metodą Marching Cubes z wbudowanego algorytmu TripoSR
         print("  -> Ekstrakcja siatki w wysokiej rozdzielczości...")
         # Zmniejszamy rozdzielczość Marching Cubes do 128 (lub 192), by zapobiec zamrażaniu procesu (CPU bottleneck z mcubes)
-        meshes = self.model.extract_mesh(scene_codes, has_vertex_color=True, resolution=192)
+        
+        # Przekazujemy callback do naszego lokalnego modelu TSR
+        if hasattr(self.model, 'extract_mesh') and 'progress_callback' in self.model.extract_mesh.__code__.co_varnames:
+            meshes = self.model.extract_mesh(scene_codes, has_vertex_color=True, resolution=192, progress_callback=progress_callback)
+        else:
+            # Fallback jeśli TSR nie wspiera callbacku
+            meshes = self.model.extract_mesh(scene_codes, has_vertex_color=True, resolution=192)
         
         # Odbieramy pierwszy z wygenerowanych meshów
         tsr_mesh = meshes[0]

@@ -61,7 +61,7 @@ class TextToMultiViewGenerator:
         print(f"  [Prompt] Zastosowano styl ({style}). Wzbogacony prompt: '{enhanced}'")
         return enhanced
 
-    def generate(self, prompt: str, reference_image: Image.Image = None, style: str = "Fotorealistyczny (PBR)") -> list[Image.Image]:
+    def generate(self, prompt: str, reference_image: Image.Image = None, style: str = "Fotorealistyczny (PBR)", progress_callback=None) -> list[Image.Image]:
         """
         Generuje widoki korzystając z modelu Image-to-Image wspomaganego ControlNetem (Canny).
         Dzięki temu bryła przedmiotu nie zmieni nagle swojego ogólnego kształtu na widoku z boku.
@@ -74,6 +74,9 @@ class TextToMultiViewGenerator:
         
         if self.pipeline is not None:
             if reference_image:
+                if progress_callback:
+                    progress_callback(0.26, "Przygotowanie mapy kształtu (Canny Edge)...")
+                    
                 # Zamiana przezroczystego tła z Rembg na czyste białe tło dla SD
                 if reference_image.mode == "RGBA":
                     white_bg = Image.new("RGB", reference_image.size, (255, 255, 255))
@@ -96,6 +99,11 @@ class TextToMultiViewGenerator:
                 view_prompt = f"{enhanced_prompt}, {view}, white background, centered"
                 print(f"  -> Przygotowywanie widoku: {view}")
                 
+                if progress_callback:
+                    # Rozkładamy postęp na 4 widoki (od 0.27 do 0.39)
+                    pct = 0.27 + (i * 0.03)
+                    progress_callback(pct, f"Generowanie widoku AI: {view}...")
+
                 # Używamy ControlNetu, by kształt (sylwetka) z pierwszego zdjęcia 
                 # został zachowany przy generowaniu widoków bocznych (strength = wierność kolorom, controlnet = wierność kształtowi)
                 strength = 0.4 if i == 0 and reference_image else 0.85
