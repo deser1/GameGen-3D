@@ -198,5 +198,23 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+    import logging
+    
+    # Konfiguracja niestandardowego filtra logów, aby usunąć spam związany z odpytywaniem o status zadania co sekundę
+    class EndpointFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            # Filtrujemy tylko wiadomości, które zawierają konkretne ścieżki (status i health)
+            msg = record.getMessage()
+            if msg.find("GET /api/status/") != -1 or msg.find("GET /health") != -1:
+                # Jeśli to jest zapytanie zakończone błędem (np. 404 lub 500), chcemy je zobaczyć
+                if record.levelno >= logging.WARNING or " 200 " not in msg:
+                    return True
+                # W przeciwnym razie wyciszamy
+                return False
+            return True
+
+    # Dodajemy filtr do loggera dostępu Uvicorna
+    logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
+
     # Uruchomienie lokalnego serwera API
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)
