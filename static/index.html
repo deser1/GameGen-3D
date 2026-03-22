@@ -88,9 +88,13 @@
 
                 <!-- Dodatkowe zasoby (Zdjecie, Audio, Logika) -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="assetsContainer" style="display: none;">
-                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-                        <h3 class="text-lg font-semibold mb-3">Obraz Referencyjny</h3>
-                        <img id="refImage" src="" alt="Referencja" class="w-full rounded border border-gray-700 bg-gray-900 max-h-64 object-contain">
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col">
+                        <h3 class="text-lg font-semibold mb-3">Wizja AI (Referencja & Kształt)</h3>
+                        <div class="flex gap-2 mb-2">
+                            <img id="refImage" src="" alt="Referencja" class="w-1/2 rounded border border-gray-700 bg-gray-900 h-48 object-contain">
+                            <img id="lassoImage" src="" alt="Lasso" class="w-1/2 rounded border border-gray-700 bg-gray-900 h-48 object-contain" style="display: none;" title="Wektorowy kształt Lassa (wyuczony)">
+                        </div>
+                        <p id="vlmFeedbackText" class="text-xs text-gray-400 mt-2 italic"></p>
                     </div>
                     <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col justify-between">
                         <div>
@@ -297,6 +301,26 @@
             // 2. Zdjęcie referencyjne
             if (res.reference_url) {
                 document.getElementById('refImage').src = res.reference_url + `?t=${new Date().getTime()}`;
+                document.getElementById('refImage').style.display = 'block';
+            } else {
+                document.getElementById('refImage').style.display = 'none';
+            }
+
+            // 2.5 Wizualizacja Lassa wektorowego
+            const lassoImg = document.getElementById('lassoImage');
+            if (res.lasso_url) {
+                lassoImg.src = res.lasso_url + `?t=${new Date().getTime()}`;
+                lassoImg.style.display = 'block';
+            } else {
+                lassoImg.style.display = 'none';
+            }
+            
+            // 2.6 Feedback od VLM (Art Director)
+            const feedbackText = document.getElementById('vlmFeedbackText');
+            if (res.vlm_feedback && res.vlm_feedback.feedback) {
+                feedbackText.innerText = `Art Director: "${res.vlm_feedback.feedback}"`;
+            } else {
+                feedbackText.innerText = "";
             }
 
             // 3. Audio SFX

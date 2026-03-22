@@ -67,6 +67,7 @@ def run_pipeline_task(task_id: str, prompt: str, style: str, force_new: bool):
         
         ref_path_internet = os.path.join(task_dir, "views", "internet_reference.png") if task_dir else None
         ref_path_imagined = os.path.join(task_dir, "views", "imagined_reference.png") if task_dir else None
+        lasso_path = os.path.join(task_dir, "views", "lasso_preview.png") if task_dir else None
         
         ref_url = None
         if ref_path_internet and os.path.exists(ref_path_internet):
@@ -74,11 +75,16 @@ def run_pipeline_task(task_id: str, prompt: str, style: str, force_new: bool):
         elif ref_path_imagined and os.path.exists(ref_path_imagined):
             ref_url = "/" + ref_path_imagined.replace("\\", "/").replace("output/", "files/", 1)
             
+        lasso_url = None
+        if lasso_path and os.path.exists(lasso_path):
+            lasso_url = "/" + lasso_path.replace("\\", "/").replace("output/", "files/", 1)
+            
         sfx_url = "/" + sfx_path.replace("\\", "/").replace("output/", "files/", 1) if sfx_path and os.path.exists(sfx_path) else None
         
         result_data = {
             "model_url": model_url,
             "reference_url": ref_url,
+            "lasso_url": lasso_url,
             "stats": stats,
             "sfx_url": sfx_url,
             "vlm_feedback": vlm_feedback,

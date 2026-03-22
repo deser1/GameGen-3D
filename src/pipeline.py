@@ -101,6 +101,59 @@ class GameGen3DPipeline:
         
         print("=== Gotowe do działania ===\n")
 
+    def _generate_with_correction(self, prompt: str, style: str, remembered_moments: list, remembered_lasso: list, report_progress):
+        max_attempts = 3
+        feedback_modifier = ""
+        best_img = None
+        
+        # Generowanie obrazka kontrolnego z Lassa do ControlNet (jeśli dostępne)
+        control_image = None
+        if remembered_lasso:
+            control_image = self.art_director.visualize_lasso(remembered_lasso, size=512)
+        
+        for attempt in range(max_attempts):
+            report_progress(0.12 + (attempt*0.01), f"Generowanie obrazu (Próba {attempt+1}/{max_attempts})...")
+            img = self.imagination.imagine_object(prompt, style, feedback_modifier, control_image=control_image)
+            
+            if not img:
+                continue
+            
+            best_img = img # Zapisujemy w razie wyczerpania prób
+            
+            # 1. Sprawdzanie konturów matematycznie (OpenCV Hu Moments)
+            if remembered_moments:
+                shape_diff = self.art_director.match_shapes(img, remembered_moments)
+                print(f"  [Pętla Samonaprawcza] Różnica kształtu (Hu Moments): {shape_diff:.2f}")
+                # Ustalony próg tolerancji.
+                if shape_diff > 15.0: 
+                    print(f"  [Pętla Samonaprawcza] Odrzucono - zły kształt matematyczny. Próba ponowna.")
+                    feedback_modifier += ", fix shape proportions to match exactly"
+                    continue
+                    
+            # 1.5 Sprawdzanie obrysu wektorowego "Lasso"
+            if remembered_lasso:
+                lasso_diff = self.art_director.match_lasso_shapes(img, remembered_lasso)
+                print(f"  [Pętla Samonaprawcza] Różnica wektorowa lassa (MSE): {lasso_diff:.4f}")
+                if lasso_diff > 0.15: # Próg odrzucenia (15% odchylenia wektorowego)
+                    print(f"  [Pętla Samonaprawcza] Odrzucono - wektorowy obrys lassa nie pasuje do wzorca.")
+                    feedback_modifier += ", correct the outline shape strictly"
+                    continue
+            
+            # 2. Weryfikacja semantyczna (VLM)
+            vlm_feedback = self.art_director.review_model(prompt, img)
+            if vlm_feedback.get('approved') is False:
+                reason = vlm_feedback.get('feedback', 'Nieznany powód')
+                print(f"  [Pętla Samonaprawcza] Odrzucono przez Art Directora: {reason}")
+                # Dodajemy feedback do kolejnej próby (w j. angielskim, żeby SD zrozumiało lepiej)
+                feedback_modifier = f"avoid errors: {reason}"
+                continue
+                
+            print(f"  [Pętla Samonaprawcza] Obraz zaakceptowany!")
+            return img
+            
+        print(f"  [Pętla Samonaprawcza] Wyczerpano próby. Zwracam najlepszy uzyskany obraz.")
+        return best_img
+
     def run(self, prompt: str, output_filename: str = "model.glb", style: str = "Fotorealistyczny (PBR)", force_new: bool = False, progress=None):
         """
         Uruchamia pełen proces od tekstu po model 3D gotowy dla silnika gry.
@@ -190,11 +243,20 @@ class GameGen3DPipeline:
         
         # 1. Sprawdzamy, czy system już kiedyś widział taki obiekt i zna jego cechy
         recalled_memory = self.imagination.recall_visual_features(prompt)
+        remembered_moments = self.imagination.recall_shape_moments(prompt)
+        remembered_lasso = self.imagination.recall_lasso_points(prompt)
         
         if recalled_memory:
-            print(f"  [Pipeline] Obiekt znany! Generowanie z wyobraźni omijając wyszukiwarkę sieciową.")
+            print(f"  [Pipeline] Obiekt znany! Generowanie z wyobraźni z wykorzystaniem pętli samonaprawczej.")
             report_progress(0.12, "Obiekt znany! Generowanie z wyobraźni...")
-            reference_img = self.imagination.imagine_object(prompt, style)
+            
+            # Zapiszmy wizualizację Lassa dla interfejsu WWW
+            if remembered_lasso:
+                lasso_preview = self.art_director.visualize_lasso(remembered_lasso, size=512)
+                if lasso_preview:
+                    lasso_preview.save(os.path.join(views_dir, "lasso_preview.png"))
+                    
+            reference_img = self._generate_with_correction(prompt, style, remembered_moments, remembered_lasso, report_progress)
             if reference_img:
                 ref_path = os.path.join(views_dir, "imagined_reference.png")
                 reference_img.save(ref_path)
@@ -205,20 +267,27 @@ class GameGen3DPipeline:
             reference_img = self.searcher.search_reference(search_prompt)
             
             if reference_img:
-                ref_path = os.path.join(views_dir, "internet_reference.png")
-                reference_img.save(ref_path)
-                print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
-                
-                # --- NAUKA: Budowanie własnej wiedzy o świecie na podstawie znalezionego w sieci zdjęcia ---
-                report_progress(0.18, "Analiza wizualna: uczenie się wyglądu (kolor, tekstura, kształt) ze zdjęcia...")
-                visual_traits = self.art_director.extract_visual_traits(prompt, reference_img)
-                if visual_traits:
-                    self.imagination.remember_visual_features(prompt, visual_traits)
-            else:
-                # 3. Jeśli w sieci też nie było (albo brak internetu) - ostateczny fallback (zgadywanie z pustą pamięcią)
-                report_progress(0.20, "Brak zdjęcia w sieci. Uruchamianie wewnętrznej wyobraźni AI (Text-to-Image)...")
+                print("  [Pipeline] Weryfikacja znalezionego obrazu z sieci...")
+                vlm_feedback = self.art_director.review_model(prompt, reference_img)
+                if vlm_feedback.get('approved') is False:
+                    print(f"  [Pipeline] Art Director odrzucił obraz z sieci: {vlm_feedback.get('feedback')}")
+                    reference_img = None # Odrzucamy obraz z sieci
+                else:
+                    ref_path = os.path.join(views_dir, "internet_reference.png")
+                    reference_img.save(ref_path)
+                    print("  [Pipeline] Obraz z sieci zaakceptowany. Trwa uczenie się...")
+                    
+                    # --- NAUKA: Budowanie własnej wiedzy o świecie na podstawie znalezionego w sieci zdjęcia ---
+                    report_progress(0.18, "Analiza wizualna: uczenie się wyglądu (kolor, tekstura, kształt) ze zdjęcia...")
+                    visual_traits = self.art_director.extract_visual_traits(prompt, reference_img)
+                    if visual_traits:
+                        self.imagination.remember_visual_features(prompt, visual_traits)
+            
+            if not reference_img:
+                # 3. Jeśli w sieci też nie było (albo odrzucono) - ostateczny fallback (zgadywanie z pustą pamięcią)
+                report_progress(0.20, "Brak obrazu w sieci. Uruchamianie wewnętrznej wyobraźni AI (Pętla Samonaprawcza)...")
                 print("  [Pipeline] Fallback do wewnętrznego generatora (ślepe zgadywanie).")
-                reference_img = self.imagination.imagine_object(prompt, style)
+                reference_img = self._generate_with_correction(prompt, style, [], [], report_progress)
                 if reference_img:
                     ref_path = os.path.join(views_dir, "imagined_reference.png")
                     reference_img.save(ref_path)
@@ -263,8 +332,14 @@ class GameGen3DPipeline:
         
         # Etap 6.6: Auto-Rigging (Tworzenie podstawowego szkieletu)
         report_progress(0.75, "Auto-Rigging (dodawanie szkieletu kości)...")
-        # LLM na razie nie definiuje nam is_character przed logiką, więc spróbujemy to zgadnąć z promptu
-        is_character = any(word in prompt.lower() for word in ["postać", "potwór", "ludzik", "zwierzę", "człowiek", "character", "monster"])
+        
+        # Oceniamy, czy to postać (VLM zamiast prostego słownika)
+        is_character = False
+        if reference_img:
+            is_character = self.art_director.is_humanoid(prompt, reference_img)
+        else:
+            is_character = any(word in prompt.lower() for word in ["postać", "potwór", "ludzik", "zwierzę", "człowiek", "character", "monster"])
+            
         rig_path = self.mesh_optimizer.auto_rig_model(low_poly_mesh, output_path, is_character=is_character)
 
         # Etap 6.7: 4D Animation (Blend Shapes / Morph Targets)
