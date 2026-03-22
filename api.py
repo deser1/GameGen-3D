@@ -1,10 +1,11 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import time
+import shutil
 from src.pipeline import GameGen3DPipeline
 from src.task_manager import task_manager
 
@@ -80,7 +81,8 @@ def run_pipeline_task(task_id: str, prompt: str, style: str, force_new: bool):
             "reference_url": ref_url,
             "stats": stats,
             "sfx_url": sfx_url,
-            "vlm_feedback": vlm_feedback
+            "vlm_feedback": vlm_feedback,
+            "task_dir": task_dir.replace("\\", "/") # Zwracamy katalog by móc go pobrać jako zip
         }
         
         task_manager.mark_task_completed(task_id, result_data)
@@ -166,6 +168,23 @@ async def generate_scene_async(req: GenerateSceneRequest, background_tasks: Back
 async def get_task_status(task_id: str):
     """Endpoint zwracający aktualny status generowania (do paska postępu w UI)."""
     return task_manager.get_task_status(task_id)
+
+@app.get("/api/download/{task_folder}")
+async def download_task_zip(task_folder: str):
+    """Pakuje cały folder zadania do formatu ZIP i zwraca go do pobrania."""
+    folder_path = os.path.join("output", task_folder)
+    
+    # Ochrona przed path traversal
+    if not os.path.exists(folder_path) or ".." in task_folder or "/" in task_folder or "\\" in task_folder:
+        raise HTTPException(status_code=404, detail="Nie znaleziono folderu zadania.")
+        
+    zip_path = os.path.join("output", f"{task_folder}.zip")
+    
+    # Tworzymy archiwum zip jeśli jeszcze nie istnieje
+    if not os.path.exists(zip_path):
+        shutil.make_archive(folder_path, 'zip', folder_path)
+        
+    return FileResponse(zip_path, media_type="application/zip", filename=f"{task_folder}_GameGen3D.zip")
 
 @app.get("/")
 async def serve_frontend():

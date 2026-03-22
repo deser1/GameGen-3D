@@ -69,8 +69,14 @@
             <!-- Panel Prawy: Wyniki -->
             <div class="col-span-1 lg:col-span-2 flex flex-col gap-6">
                 <!-- Podgląd 3D -->
-                <div class="bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h2 class="text-xl font-semibold mb-4">Podgląd Modelu 3D</h2>
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Podgląd Modelu 3D</h2>
+                        <a id="downloadBtn" href="#" target="_blank" style="display: none;" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm transition duration-200 flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Pobierz Pełną Paczkę (.ZIP)
+                        </a>
+                    </div>
                     <div id="modelContainer">
                         <div class="flex items-center justify-center h-[500px] bg-gray-900 rounded border border-gray-700 text-gray-500">
                             Wpisz prompt i wygeneruj model, aby go zobaczyć.
@@ -297,6 +303,14 @@
             // 4. Logika JSON
             if (res.stats) {
                 document.getElementById('logicJson').innerText = JSON.stringify(res.stats, null, 2);
+            }
+
+            // 5. Przycisk pobierania paczki ZIP
+            if (res.task_dir) {
+                const folderName = res.task_dir.split('/').pop();
+                const downloadBtn = document.getElementById('downloadBtn');
+                downloadBtn.href = `/api/download/${folderName}`;
+                downloadBtn.style.display = 'inline-flex';
             }
         }
     </script>
