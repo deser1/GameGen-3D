@@ -184,30 +184,46 @@ class GameGen3DPipeline:
         elif "Anime" in style:
             search_prompt += " anime cel shaded style"
 
-        # Etap 0: Zebranie kontekstu wizualnego z Internetu
-        report_progress(0.1, "Wyszukiwanie obrazu referencyjnego w sieci i wycinanie tła...")
-        reference_img = self.searcher.search_reference(search_prompt)
+        # Etap 0: Zebranie kontekstu wizualnego (Najpierw Wyobraźnia, potem Internet)
+        report_progress(0.1, "Odpytywanie Bazy Wiedzy (Wyobraźni)...")
+        reference_img = None
         
-        if reference_img:
-            ref_path = os.path.join(views_dir, "internet_reference.png")
-            reference_img.save(ref_path)
-            print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
-            
-            # --- NAUKA: Budowanie własnej wiedzy o świecie na podstawie znalezionych wektorów/pikseli/kolorów ---
-            report_progress(0.12, "Analiza wizualna: uczenie się wyglądu (kolor, tekstura, kształt) ze zdjęcia...")
-            visual_traits = self.art_director.extract_visual_traits(prompt, reference_img)
-            if visual_traits:
-                self.imagination.remember_visual_features(prompt, visual_traits)
-                
-        else:
-            report_progress(0.15, "Brak zdjęcia w sieci. Uruchamianie wewnętrznej wyobraźni AI (Text-to-Image)...")
-            print("  [Pipeline] Fallback do wewnętrznego generatora wiedzy wizualnej.")
+        # 1. Sprawdzamy, czy system już kiedyś widział taki obiekt i zna jego cechy
+        recalled_memory = self.imagination.recall_visual_features(prompt)
+        
+        if recalled_memory:
+            print(f"  [Pipeline] Obiekt znany! Generowanie z wyobraźni omijając wyszukiwarkę sieciową.")
+            report_progress(0.12, "Obiekt znany! Generowanie z wyobraźni...")
             reference_img = self.imagination.imagine_object(prompt, style)
             if reference_img:
                 ref_path = os.path.join(views_dir, "imagined_reference.png")
                 reference_img.save(ref_path)
+        
+        # 2. Jeśli nie znał obiektu (lub wyobraźnia zawiodła), szukamy w Internecie i UCZYMY się go
+        if not reference_img:
+            report_progress(0.15, "Obiekt nieznany. Wyszukiwanie obrazu referencyjnego w sieci i wycinanie tła...")
+            reference_img = self.searcher.search_reference(search_prompt)
+            
+            if reference_img:
+                ref_path = os.path.join(views_dir, "internet_reference.png")
+                reference_img.save(ref_path)
+                print("  [Pipeline] Używanie znalezionego w sieci obrazu jako bazy.")
+                
+                # --- NAUKA: Budowanie własnej wiedzy o świecie na podstawie znalezionego w sieci zdjęcia ---
+                report_progress(0.18, "Analiza wizualna: uczenie się wyglądu (kolor, tekstura, kształt) ze zdjęcia...")
+                visual_traits = self.art_director.extract_visual_traits(prompt, reference_img)
+                if visual_traits:
+                    self.imagination.remember_visual_features(prompt, visual_traits)
             else:
-                raise ValueError("Nie udało się ani znaleźć referencji, ani wygenerować jej z wyobraźni.")
+                # 3. Jeśli w sieci też nie było (albo brak internetu) - ostateczny fallback (zgadywanie z pustą pamięcią)
+                report_progress(0.20, "Brak zdjęcia w sieci. Uruchamianie wewnętrznej wyobraźni AI (Text-to-Image)...")
+                print("  [Pipeline] Fallback do wewnętrznego generatora (ślepe zgadywanie).")
+                reference_img = self.imagination.imagine_object(prompt, style)
+                if reference_img:
+                    ref_path = os.path.join(views_dir, "imagined_reference.png")
+                    reference_img.save(ref_path)
+                else:
+                    raise ValueError("Nie udało się ani znaleźć referencji w sieci, ani wygenerować jej z wyobraźni.")
 
         # Etap 1: Generowanie obrazów referencyjnych (Multi-view) na podstawie sieci z wstrzyknięciem stylu
         report_progress(0.25, "Generowanie 4 widoków (Multi-view) przy użyciu AI (Stable Diffusion)...")
